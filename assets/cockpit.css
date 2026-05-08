@@ -1,0 +1,14 @@
+/* Responsive 2-column layout for the ticker verdict + chart */
+.verdict-row {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+.verdict-left  { flex: 0 0 33%; min-width: 260px; }
+.verdict-right { flex: 1 1 0; min-width: 0; }
+
+@media (max-width: 800px) {
+    .verdict-row   { flex-direction: column; }
+    .verdict-left  { flex: none; width: 100%; }
+    .verdict-right { flex: none; width: 100%; }
+}

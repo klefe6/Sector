@@ -77,6 +77,55 @@ def quadrant(rr, rm):
     if rr < 100  and rm < 100:  return "Lagging"
     return "Improving"
 
+# ───────── DIRECTION HELPERS (mirrors sector_engine.py) ─────────
+DELTA_THRESHOLD = 0.15   # deltas below this are considered "stalling"
+
+def rrg_dir(d_rsr, d_rsm):
+    """Classify directional acceleration from RS-Ratio / RS-Momentum deltas."""
+    if not np.isfinite(d_rsr) or not np.isfinite(d_rsm):
+        return "insufficient history"
+    up_r = d_rsr >  DELTA_THRESHOLD
+    dn_r = d_rsr < -DELTA_THRESHOLD
+    up_m = d_rsm >  DELTA_THRESHOLD
+    dn_m = d_rsm < -DELTA_THRESHOLD
+    if up_r and up_m: return "↑ strengthening"
+    if dn_r and dn_m: return "↓ deteriorating"
+    if up_r and dn_m: return "↗ RS↑ mom↓"
+    if dn_r and up_m: return "↘ RS↓ mom↑"
+    return "→ stalling"
+
+_RRG_LABELS = {
+    ("Leading",   "↑ strengthening"): "Leading, strengthening",
+    ("Leading",   "↓ deteriorating"): "Leading, losing momentum",
+    ("Leading",   "↗ RS↑ mom↓"):      "Leading, momentum fading",
+    ("Leading",   "↘ RS↓ mom↑"):      "Leading, RS slipping",
+    ("Leading",   "→ stalling"):       "Leading, stalling",
+    ("Weakening", "↑ strengthening"): "Weakening but recovering",
+    ("Weakening", "↓ deteriorating"): "Weakening, deteriorating",
+    ("Weakening", "↗ RS↑ mom↓"):      "Weakening, momentum fading",
+    ("Weakening", "↘ RS↓ mom↑"):      "Weakening, momentum recovering",
+    ("Weakening", "→ stalling"):       "Weakening, stalling",
+    ("Lagging",   "↑ strengthening"): "Lagging but strengthening",
+    ("Lagging",   "↓ deteriorating"): "Lagging, deteriorating",
+    ("Lagging",   "↗ RS↑ mom↓"):      "Lagging, slight RS recovery",
+    ("Lagging",   "↘ RS↓ mom↑"):      "Lagging, momentum building",
+    ("Lagging",   "→ stalling"):       "Lagging, stalling",
+    ("Improving", "↑ strengthening"): "Improving, accelerating",
+    ("Improving", "↓ deteriorating"): "Improving but fading",
+    ("Improving", "↗ RS↑ mom↓"):      "Improving, stalling",
+    ("Improving", "↘ RS↓ mom↑"):      "Improving, momentum building",
+    ("Improving", "→ stalling"):       "Improving, stalling",
+}
+
+def rrg_label(q, d):
+    return _RRG_LABELS.get((q, d), f"{q}, {d}")
+
+def rrg_score(d_rsr, d_rsm, scale=1.5):
+    """Acceleration score −100 to +100. See sector_engine.py for formula."""
+    if not np.isfinite(d_rsr) or not np.isfinite(d_rsm):
+        return 0
+    return round(float(np.clip((d_rsr + d_rsm) / 2.0 / scale * 100, -100, 100)), 1)
+
 def safe_bounds(arr, center=100, span=10):
     arr = np.asarray(arr, dtype=float)
     finite = arr[np.isfinite(arr)]
@@ -138,24 +187,48 @@ app.layout = html.Div(
                               min=3, max=100, step=1, style={"width":"60px"})
                 ], style={"marginBottom":"8px"}),
 
-                html.H5("Quadrants (current bar)"),
+                html.H5("Quadrants + Direction (current bar)"),
                 dash_table.DataTable(
                     id="quad_table",
-                    columns=[{"name":"Ticker","id":"Ticker"},
-                             {"name":"Name","id":"Name"},
-                             {"name":"Quadrant","id":"Quadrant"},
-                             {"name":"RS-Ratio","id":"RSR"},
-                             {"name":"RS-Mom.","id":"RSM"}],
+                    columns=[
+                        {"name":"Ticker",    "id":"Ticker"},
+                        {"name":"Name",      "id":"Name"},
+                        {"name":"Quadrant",  "id":"Quadrant"},
+                        {"name":"RSR",       "id":"RSR"},
+                        {"name":"RSM",       "id":"RSM"},
+                        {"name":"Direction", "id":"Direction"},
+                        {"name":"ΔRSR",      "id":"DRSR"},
+                        {"name":"ΔRSM",      "id":"DRSM"},
+                        {"name":"Score",     "id":"Score"},
+                        {"name":"Decision",  "id":"Label"},
+                    ],
                     data=[],
-                    style_table={"maxHeight":"45vh","overflowY":"auto"},
-                    style_cell={"padding":"4px","fontSize":"12px"},
-                    style_header={"fontWeight":"600","backgroundColor":"#f5f5f5"},
+                    style_table={"maxHeight":"45vh","overflowY":"auto","overflowX":"auto"},
+                    style_cell={"padding":"4px","fontSize":"11px","whiteSpace":"nowrap"},
+                    style_header={"fontWeight":"600","backgroundColor":"#f5f5f5","whiteSpace":"nowrap"},
                     style_data_conditional=[
                         {"if":{"filter_query":"{Quadrant} = 'Leading'"},   "backgroundColor":"#e8f8e8"},
                         {"if":{"filter_query":"{Quadrant} = 'Lagging'"},   "backgroundColor":"#fdecea"},
                         {"if":{"filter_query":"{Quadrant} = 'Improving'"}, "backgroundColor":"#e8f2ff"},
                         {"if":{"filter_query":"{Quadrant} = 'Weakening'"}, "backgroundColor":"#fff7e6"},
+                        # Direction column colouring
+                        {"if":{"filter_query":"{Direction} contains 'strengthening'","column_id":"Direction"},
+                         "backgroundColor":"#d4edda","color":"#155724","fontWeight":"600"},
+                        {"if":{"filter_query":"{Direction} contains 'deteriorating'","column_id":"Direction"},
+                         "backgroundColor":"#f8d7da","color":"#721c24","fontWeight":"600"},
+                        {"if":{"filter_query":"{Direction} contains 'stalling'","column_id":"Direction"},
+                         "backgroundColor":"#e9ecef","color":"#495057"},
+                        # Score column colouring
+                        {"if":{"filter_query":"{Score} > 25","column_id":"Score"},
+                         "backgroundColor":"#d4edda","color":"#155724","fontWeight":"600"},
+                        {"if":{"filter_query":"{Score} < -25","column_id":"Score"},
+                         "backgroundColor":"#f8d7da","color":"#721c24","fontWeight":"600"},
                     ]
+                ),
+                html.Div(
+                    "ℹ Direction: current bar vs. avg of prior 2 bars. "
+                    "Score −100 to +100 (positive = improving).",
+                    style={"fontSize":"10px","color":"#888","marginTop":"4px","fontStyle":"italic"}
                 ),
 
                 html.Div(id="current_period_left",
@@ -377,12 +450,34 @@ def update(sel_tickers, tail_len, t_idx, freq, sw, lw,
         margin=dict(l=50,r=20,t=40,b=40)
     )
 
-    last_rr = rratio.iloc[-1].round(2)
-    last_rm = rmom.iloc[-1].round(2)
-    rows = [{"Ticker":t,"Name":SECTOR_NAMES[t],
-             "Quadrant":quadrant(last_rr[t], last_rm[t]),
-             "RSR":float(last_rr[t]), "RSM":float(last_rm[t])}
-            for t in sel_tickers]
+    last_rr  = rratio.iloc[-1].round(2)
+    last_rm  = rmom.iloc[-1].round(2)
+    has_dir  = len(rratio) >= 3
+    if has_dir:
+        prev2_rr = rratio.iloc[-3:-1].mean()
+        prev2_rm = rmom.iloc[-3:-1].mean()
+
+    rows = []
+    for t in sel_tickers:
+        q  = quadrant(float(last_rr[t]), float(last_rm[t]))
+        if has_dir:
+            dr = round(float(last_rr[t]) - float(prev2_rr[t]), 3)
+            dm = round(float(last_rm[t]) - float(prev2_rm[t]), 3)
+        else:
+            dr = dm = float("nan")
+        d = rrg_dir(dr, dm)
+        rows.append({
+            "Ticker":    t,
+            "Name":      SECTOR_NAMES[t],
+            "Quadrant":  q,
+            "RSR":       float(last_rr[t]),
+            "RSM":       float(last_rm[t]),
+            "Direction": d,
+            "DRSR":      round(dr, 2) if np.isfinite(dr) else 0,
+            "DRSM":      round(dm, 2) if np.isfinite(dm) else 0,
+            "Score":     rrg_score(dr, dm) if has_dir else 0,
+            "Label":     rrg_label(q, d),
+        })
 
     current_date = idx[-1]
     period_txt = f"Period: {current_date.strftime('%B %Y')}"

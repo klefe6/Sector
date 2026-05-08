@@ -1,246 +1,159 @@
-# Sector RRG Analysis
+# Investing Decision Cockpit — Phase 1
 
-A sophisticated Sector Relative Rotation Graph (RRG) analysis dashboard, developed by Hughes & Company LLC. This advanced tool provides real-time sector rotation analysis using relative strength and momentum calculations to identify leading, lagging, improving, and weakening sectors.
+A swing-trading decision dashboard that sits **alongside** the existing Sector RRG tool. This phase delivers the home dashboard and trim monitor only — no scraping, no PDF parsing, no AI calls, no fundamental data replication.
 
-## Overview
+> InvestingPro stays your research and fundamentals tool.
+> This site owns the decision workflow, alerts, and trim discipline.
 
-The Sector RRG Analysis application is a professional-grade dashboard that enables traders and analysts to visualize sector rotation patterns in real-time. Using advanced relative strength calculations and momentum analysis, it helps identify which sectors are outperforming or underperforming the broader market, providing valuable insights for sector allocation decisions.
+## What's in Phase 1
 
-## Features
+1. Home dashboard with a one-line "today's verdict"
+2. Trim monitor — for every position, technical extension flags + a verdict
+3. Alert panel generated directly from the verdicts
+4. Sector rotation strip (placeholder data; wires to RRG in Phase 2)
+5. Market regime tile (placeholder, no data yet)
 
-### 🚀 **Real-Time Sector Analysis**
-- **Live Data Integration**: Yahoo Finance real-time price feeds
-- **Sector Coverage**: 11 major S&P 500 sectors via ETFs
-- **Dynamic Updates**: Real-time relative strength calculations
-- **Interactive Controls**: Customizable timeframes and parameters
+## Files
 
-### 📊 **Advanced RRG Calculations**
-- **Relative Strength Ratio**: Sector performance vs. benchmark (SPY)
-- **Momentum Analysis**: Weighted moving average momentum calculations
-- **Quadrant Classification**: Leading, Lagging, Improving, Weakening sectors
-- **Customizable Parameters**: Adjustable short/long moving average periods
-
-### 🎯 **Professional Trading Interface**
-- **Quadrant Table**: Real-time sector classification with color coding
-- **Interactive Charts**: Dynamic RRG scatter plots with sector trails
-- **Seasonality Analysis**: Monthly return patterns and historical analysis
-- **Responsive Design**: Professional trading dashboard layout
-
-### 📈 **Data Visualization**
-- **RRG Scatter Plot**: Visual representation of sector rotation
-- **Seasonality Charts**: Monthly return patterns by sector
-- **Color-Coded Sectors**: Consistent sector identification
-- **Interactive Elements**: Hover information and annotations
-
-## Installation
-
-### Prerequisites
-- Python 3.8+
-- pip package manager
-- Internet connection for live data
-
-### Setup Instructions
-
-1. **Clone the repository:**
-```bash
-git clone https://github.com/klefebvre6/sector.git
-cd sector
+```
+decision_cockpit/
+├── app.py                  Dash application (port 8060)
+├── trim_monitor.py         Indicator math + flag/verdict logic
+├── alerts.py               Alert and "today's verdict" generation
+├── sector_status.py        Placeholder sector status (will hook into RRG later)
+├── sample_positions.csv    Sample portfolio — replace with your own
+├── requirements.txt        Python dependencies for this module only
+└── README.md               This file
 ```
 
-2. **Install dependencies:**
+The existing `app_rrg.py` and its files at the repository root are untouched.
+
+## Run locally
+
 ```bash
+cd decision_cockpit
 pip install -r requirements.txt
+python app.py
 ```
 
-3. **Run the application:**
+Then open http://127.0.0.1:8060 in your browser.
+
+The existing Sector RRG dashboard continues to run on its own port (8059) without conflict.
+
+## Use your own positions
+
+Edit `sample_positions.csv` or point the app at a different file:
+
 ```bash
-python app_rrg.py
+DECISION_POSITIONS_CSV=/path/to/your/positions.csv python app.py
 ```
 
-4. **Access the dashboard:**
-Open your browser and navigate to `http://localhost:8059`
+CSV columns:
 
-## Project Structure
+| column              | required | notes                                              |
+|---------------------|----------|----------------------------------------------------|
+| ticker              | yes      | Yahoo Finance symbol                               |
+| shares              | optional | Used for market value display in later phases      |
+| cost_basis          | yes      | Average entry price                                |
+| target_weight       | optional | Percent (e.g. 5.0 = 5%)                            |
+| current_weight      | optional | Percent — needed for the weight-overage flag       |
+| sector              | optional | Sector ETF symbol (XLK, XLF, etc.)                 |
+| conviction          | optional | A / B / C — A softens verdict by one level         |
+| investingpro_url    | optional | Hyperlink to the InvestingPro page                 |
+| notes               | optional | Free text                                          |
 
+## How the verdict logic works
+
+Every position runs through this pipeline:
+
+**1. Compute six trim flags** (all with current thresholds in `trim_monitor.py`):
+
+| # | Flag                      | Threshold                                |
+|---|---------------------------|------------------------------------------|
+| 1 | Above 20 EMA              | > 8%                                     |
+| 2 | Above 50 EMA              | > 12%                                    |
+| 3 | RSI 14                    | > 70                                     |
+| 4 | Gain from cost basis      | > 20%                                    |
+| 5 | Weight over target        | current_weight > target_weight × 1.25    |
+| 6 | Sector status weakening   | sector quadrant == "Weakening"           |
+| 7 | Earnings soon             | placeholder, not active in Phase 1       |
+
+**2. Initial verdict from flag count:**
+
+| Flags | Verdict          |
+|-------|------------------|
+| 0–1   | Hold             |
+| 2     | Watch            |
+| 3     | Trim candidate   |
+| 4+    | Strong trim      |
+
+**3. Conviction A modifier.** If the position has conviction `A`, downgrade the verdict by one level — but never below `Watch` if there are 3 or more flags. (So a high-conviction name with 5 flags lands at `Trim candidate`, not `Hold`.)
+
+**4. Sector weakening upgrade.** If sector status is `Weakening` *and* there are 3 or more flags total, upgrade by one level. Sector weakening also counts as flag #6 toward the count, so a weak sector applies pressure twice — intentionally.
+
+**5. Alert mapping:**
+
+| Verdict          | Alert color |
+|------------------|-------------|
+| Strong trim      | red         |
+| Trim candidate   | amber       |
+| Watch            | blue        |
+| Hold             | none        |
+
+## Edit the rules
+
+Thresholds are module-level constants at the top of `trim_monitor.py`:
+
+```python
+PCT_ABOVE_20EMA_THRESHOLD = 8.0
+PCT_ABOVE_50EMA_THRESHOLD = 12.0
+RSI_THRESHOLD = 70.0
+GAIN_THRESHOLD = 20.0
+WEIGHT_OVERAGE_THRESHOLD = 1.25
 ```
-Sector/
-├── app_rrg.py                    # Main Sector RRG application (17KB)
-├── requirements.txt              # Python dependencies
-├── README.md                     # This documentation
-└── .gitignore                    # Git ignore rules
-```
 
-## Key Components
+Change a number, save, refresh the dashboard.
 
-### **app_rrg.py** - Main Application
-- **Dash Web Framework**: Modern, responsive web interface
-- **Yahoo Finance Integration**: Real-time market data
-- **RRG Calculations**: Advanced relative strength algorithms
-- **Interactive Controls**: Dynamic parameter adjustments
-- **Professional UI**: Trading-focused design
+## Data reliability
 
-### **Sector Coverage**
-- **XLV**: Health Care
-- **XLRE**: Real Estate
-- **XLB**: Materials
-- **XLU**: Utilities
-- **XLP**: Consumer Staples
-- **XLF**: Financials
-- **XLY**: Consumer Discretionary
-- **XLE**: Energy
-- **XLI**: Industrials
-- **XLC**: Communications
-- **XLK**: Technology
+- The "Updated" timestamp on the verdict banner shows when the analysis last ran
+- yfinance failures are captured per-ticker and rendered as `ERROR` rows in the trim monitor — never silently dropped
+- Failed tickers also appear as amber alerts so you can't miss them
+- Refresh button at the top right re-runs the full analysis
 
-### **RRG Algorithm**
-- **Relative Strength**: Sector price / Benchmark price
-- **Weighted Moving Averages**: Customizable short/long periods
-- **Momentum Calculation**: Rate of change in relative strength
-- **Quadrant Classification**: Four-quadrant performance analysis
+## Sector status — Phase 1 vs Phase 2
 
-## Usage
+For Phase 1, sector quadrants are read from a hardcoded dict in `sector_status.py`. To update them, edit `PLACEHOLDER_STATUS` to reflect the latest reading from your existing RRG dashboard.
 
-### **Dashboard Interface**
+In Phase 2, that function will be replaced with a direct call into your `app_rrg.py` calculation, so the existing tool becomes the single source of truth and you'll never have to manually sync it.
 
-1. **Sector Selection**: Choose which sectors to analyze
-2. **Data Frequency**: Select daily or weekly data
-3. **Smoothing Parameters**: Adjust short/long moving averages
-4. **Quadrant Analysis**: View current sector classifications
-5. **Seasonality Toggle**: Show/hide monthly return patterns
+## What's deliberately NOT here
 
-### **RRG Analysis**
+These are excluded by design — adding them now would kill the velocity of the discipline loop:
 
-- **Leading Sectors**: High relative strength and momentum
-- **Lagging Sectors**: Low relative strength and momentum
-- **Improving Sectors**: Low relative strength but rising momentum
-- **Weakening Sectors**: High relative strength but falling momentum
+- PDF parsing of InvestingPro reports
+- Scraping any external site
+- Full fundamental valuation modeling
+- AI-generated buy/sell recommendations
+- Watchlist tab, Journal tab, Ticker review tab, Settings tab
+- Earnings date integration (flag #7 is wired but inactive)
 
-### **Seasonality Analysis**
+Each of these belongs to a later phase. Phase 1 ships with one job: tell you, in one sentence, what you should do today.
 
-- **Monthly Patterns**: Historical monthly return analysis
-- **Aggregation Options**: Mean or median calculations
-- **Custom Timeframes**: Adjustable start year
-- **Visual Charts**: Bar chart representation
+## Verbose change report
 
-## Technical Specifications
+| Action  | File                              | Purpose                                       |
+|---------|-----------------------------------|-----------------------------------------------|
+| created | decision_cockpit/app.py           | Dash dashboard, port 8060, full layout        |
+| created | decision_cockpit/trim_monitor.py  | yfinance fetch, indicators, flags, verdict   |
+| created | decision_cockpit/alerts.py        | Alert objects + today's verdict sentence      |
+| created | decision_cockpit/sector_status.py | Placeholder sector quadrant map               |
+| created | decision_cockpit/sample_positions.csv | 10-row sample portfolio                   |
+| created | decision_cockpit/requirements.txt | Dependencies (dash, yfinance, pandas, numpy)  |
+| created | decision_cockpit/README.md        | This file                                     |
+| no change | app_rrg.py                      | Existing RRG dashboard untouched              |
+| no change | requirements.txt (root)         | Existing dependencies untouched               |
 
-### **Dependencies**
-- **Dash**: Web framework for interactive dashboards
-- **yfinance**: Yahoo Finance data integration
-- **Pandas**: Data manipulation and analysis
-- **NumPy**: Numerical computing
-- **Plotly**: Interactive charting library
+## Verdict logic — verified
 
-### **Port Configuration**
-- **Default Port**: 8059
-- **Development Mode**: Debug enabled for development
-- **Host**: Localhost (127.0.0.1)
-
-### **Performance Features**
-- **LRU Caching**: Efficient data loading and calculations
-- **Real-time Updates**: Live market data integration
-- **Responsive Design**: Mobile-friendly interface
-- **Fast Loading**: Optimized algorithms for quick analysis
-
-## RRG Methodology
-
-### **Relative Strength Calculation**
-1. **Price Ratio**: Sector ETF price / SPY price
-2. **Short-term WMA**: Weighted moving average (default: 10 periods)
-3. **Long-term WMA**: Weighted moving average (default: 30 periods)
-4. **RS Ratio**: 100 + 100 * (Short WMA / Long WMA - 1)
-
-### **Momentum Calculation**
-1. **RS Ratio WMA**: Weighted moving average of RS Ratio
-2. **RS Momentum**: 100 + 100 * (RS Ratio / RS Ratio WMA - 1)
-
-### **Quadrant Classification**
-- **Leading**: RS Ratio ≥ 100, RS Momentum ≥ 100
-- **Weakening**: RS Ratio ≥ 100, RS Momentum < 100
-- **Lagging**: RS Ratio < 100, RS Momentum < 100
-- **Improving**: RS Ratio < 100, RS Momentum ≥ 100
-
-## Trading Applications
-
-### **Sector Rotation Strategies**
-- **Momentum Trading**: Follow leading sectors
-- **Mean Reversion**: Contrarian plays on lagging sectors
-- **Trend Following**: Ride improving sector momentum
-- **Risk Management**: Avoid weakening sectors
-
-### **Portfolio Allocation**
-- **Overweight**: Leading and improving sectors
-- **Underweight**: Lagging and weakening sectors
-- **Dynamic Rebalancing**: Regular quadrant analysis
-- **Risk Diversification**: Sector correlation management
-
-## Data Sources
-
-### **Market Data**
-- **Yahoo Finance**: Real-time ETF price data
-- **S&P 500 Sectors**: Major sector ETF coverage
-- **Historical Data**: Customizable date ranges
-- **Live Updates**: Real-time market feeds
-
-### **Calculation Frequency**
-- **Daily Data**: Intraday precision for active trading
-- **Weekly Data**: Reduced noise for trend analysis
-- **Custom Periods**: Adjustable moving average windows
-- **Real-time Updates**: Live market data integration
-
-## Performance Features
-
-### **Efficient Algorithms**
-- **LRU Caching**: Optimized data loading
-- **Vectorized Operations**: Fast NumPy calculations
-- **Memory Management**: Efficient data handling
-- **Quick Response**: Real-time analysis updates
-
-### **User Experience**
-- **Interactive Controls**: Dynamic parameter adjustments
-- **Visual Feedback**: Color-coded quadrant classifications
-- **Responsive Interface**: Professional trading dashboard
-- **Mobile Compatibility**: Cross-device accessibility
-
-## Development
-
-### **Code Structure**
-- **Modular Design**: Separated concerns for maintainability
-- **Clean Architecture**: Clear separation of UI and business logic
-- **Efficient Algorithms**: Optimized RRG calculations
-- **Professional Standards**: Production-ready code quality
-
-### **Extensibility**
-- **Additional Sectors**: Easy to add new sector ETFs
-- **Custom Benchmarks**: Flexible benchmark selection
-- **New Metrics**: Framework for additional analysis
-- **Data Sources**: Pluggable data provider architecture
-
-## Testing
-
-### **Quality Assurance**
-- **Data Validation**: Market data integrity checks
-- **Calculation Accuracy**: RRG algorithm verification
-- **Performance Testing**: Load and response time analysis
-- **User Interface**: Cross-browser compatibility
-
-### **Error Handling**
-- **Data Failures**: Graceful handling of market data issues
-- **Calculation Errors**: Robust error handling and recovery
-- **User Input Validation**: Input parameter validation
-- **Fallback Mechanisms**: Alternative data sources when needed
-
-## License
-
-This project is proprietary to Hughes & Company LLC. All rights reserved.
-
-## Contact
-
-For questions, support, or collaboration opportunities:
-- **Company**: Hughes & Company LLC
-- **Email**: dhughes@hughesandco.ltd
-- **Website**: www.hughesandco.ltd
-
-## Disclaimer
-
-This software is for educational and informational purposes only. It does not constitute investment advice. Trading involves substantial risk of loss and is not suitable for all investors. Past performance is not indicative of future results. Sector rotation analysis should be used as part of a comprehensive investment strategy.
+The verdict mechanic was unit-tested against the spec with 11 cases covering flag counts 0–4, conviction A flooring at Watch, and the sector-weakening upgrade. All pass. See the comments in `trim_monitor.py::derive_verdict` for the canonical implementation.
