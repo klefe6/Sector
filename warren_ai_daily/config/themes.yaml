@@ -1,0 +1,121 @@
+# Warren AI — User-Defined Theme Registry
+# Edit freely. Themes are an OVERLAY on top of classic SPDR sectors.
+# A ticker retains its classic sector (XLK, XLC, XLE, etc.) regardless of theme tags.
+# A ticker may belong to many themes simultaneously.
+#
+# Structure:
+#   themes:
+#     Theme Name:
+#       description: "Short description of the theme."
+#       tickers:
+#         TICKER: "Short rationale for inclusion"
+
+themes:
+
+  AI Infrastructure:
+    description: "Companies exposed to AI compute, chips, servers, networking, cloud, and data center power demand."
+    tickers:
+      NVDA: "AI GPUs and systems — dominant AI compute"
+      AMD: "AI accelerators, CPU, EPYC data center"
+      AVGO: "AI networking and custom silicon (ASIC)"
+      MSFT: "Azure cloud and AI platform (Copilot, OpenAI)"
+      META: "AI capex, inference at scale, ad platform"
+      GOOGL: "Gemini AI models, Google Cloud, TPU silicon"
+      SMCI: "AI server systems and liquid cooling"
+      VRT: "Data center power conversion and cooling (Vertiv)"
+      ETN: "Electrical infrastructure for data centers"
+      CEG: "Nuclear power demand beneficiary (Constellation Energy)"
+      ORCL: "Cloud and AI database infrastructure"
+      CRM: "AI-powered CRM and Agentforce"
+
+  Semiconductors:
+    description: "Chip designers, foundries, equipment, memory, and AI silicon supply chain."
+    tickers:
+      NVDA: "GPU leader — AI training and inference"
+      AMD: "CPU/GPU/AI accelerators"
+      AVGO: "Custom ASIC networking and connectivity"
+      TSM: "World's leading semiconductor foundry"
+      ASML: "EUV lithography — critical choke point"
+      AMAT: "Semiconductor capital equipment"
+      LRCX: "Etch and deposition equipment"
+      MU: "DRAM and NAND memory — HBM for AI"
+      QCOM: "Mobile and edge AI silicon"
+      KLAC: "Semiconductor process control"
+      MRVL: "Custom AI silicon and networking"
+      INTC: "CPU and foundry (Intel 18A)"
+
+  Data Centers:
+    description: "Power, cooling, REITs, servers, networking, and grid infrastructure for hyperscaler growth."
+    tickers:
+      VRT: "Power conversion and cooling systems (Vertiv)"
+      ETN: "Electrical equipment and switchgear"
+      PWR: "Grid and electrical construction (Quanta)"
+      CEG: "Nuclear power generation for data centers"
+      VST: "Power generation — AI demand beneficiary"
+      DLR: "Digital Realty — data center REIT"
+      EQIX: "Equinix — interconnection and colocation REIT"
+      SMCI: "AI server systems"
+      NVDA: "AI compute demand driver"
+      AMZN: "AWS — hyperscaler and data center operator"
+      GOOGL: "Google Cloud infrastructure"
+      MSFT: "Azure data center expansion"
+
+  Nuclear Energy:
+    description: "Uranium miners, nuclear generation, advanced reactor developers, and power demand beneficiaries."
+    tickers:
+      CEG: "Constellation Energy — largest US nuclear operator"
+      VST: "Vistra — nuclear and natural gas generation"
+      CCJ: "Cameco — uranium mining and fuel services"
+      UUUU: "Energy Fuels — uranium and rare earths"
+      URA: "Global X Uranium ETF"
+      OKLO: "Advanced small modular reactors (SMR)"
+      NNE: "Nano Nuclear Energy — microreactor developer"
+      LEU: "Centrus Energy — US uranium enrichment"
+
+  Grid & Power Infrastructure:
+    description: "Electrical grid modernization, transmission, distribution, and renewable interconnection."
+    tickers:
+      ETN: "Power management and grid equipment"
+      PWR: "Electrical construction and grid services"
+      HUBB: "Hubbell — electrical components and grid hardware"
+      EMR: "Emerson — automation and electrical infrastructure"
+      AEE: "Ameren — regulated utility with grid investment"
+      NEE: "NextEra Energy — largest US utility and renewable developer"
+      AEP: "American Electric Power — transmission-heavy utility"
+      EIX: "Edison International — grid modernization"
+      CWEN: "Clearway Energy — renewable generation"
+
+  Cybersecurity:
+    description: "Network security, endpoint, identity, SIEM, cloud security, and AI-driven threat detection."
+    tickers:
+      CRWD: "CrowdStrike — endpoint and cloud security leader"
+      PANW: "Palo Alto Networks — platform security"
+      FTNT: "Fortinet — firewall and network security"
+      ZS: "Zscaler — zero trust and SASE"
+      OKTA: "Okta — identity and access management"
+      S: "SentinelOne — AI-driven endpoint security"
+      CYBR: "CyberArk — privileged access management"
+      QLYS: "Qualys — cloud security and compliance"
+
+  Robotics & Automation:
+    description: "Industrial robots, collaborative robots, autonomous systems, and manufacturing automation."
+    tickers:
+      ROK: "Rockwell Automation — factory automation"
+      FANUY: "Fanuc — industrial robots"
+      ABB: "ABB — industrial automation and robotics"
+      ISRG: "Intuitive Surgical — surgical robotics"
+      TRMB: "Trimble — positioning and autonomous machinery"
+      PATH: "UiPath — software robotic process automation"
+      TER: "Teradyne — robot testing and collaborative robots"
+
+  Defense AI & Space:
+    description: "Defense primes, drone systems, space, and AI-enhanced military technology."
+    tickers:
+      LMT: "Lockheed Martin — F-35, hypersonics, space"
+      RTX: "Raytheon — missiles, sensors, defense electronics"
+      NOC: "Northrop Grumman — B-21, space systems"
+      GD: "General Dynamics — submarines, IT, land systems"
+      L3HGT: "L3Harris — ISR and defense electronics"
+      PLTR: "Palantir — AI analytics for defense and government"
+      RKLB: "Rocket Lab — small launch vehicles and space systems"
+      ACHR: "Archer Aviation — electric air mobility (defense angle)"

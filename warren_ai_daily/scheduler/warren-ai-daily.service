@@ -1,0 +1,30 @@
+[Unit]
+Description=Warren AI Daily Swing Trading Runner
+# See DAILY_RUN.md in the warren_ai_daily project directory for documentation
+# Require network and graphical session (for Chrome CDP)
+After=network-online.target graphical-session.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/klefe6/Coding Projects/rrg/warren_ai_daily
+
+# Environment for the run
+Environment=DISPLAY=:1
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+
+# Compile-check before run so a TS error cannot silently break the 7 AM timer
+ExecStartPre=/usr/bin/npm run build
+
+# Full workflow: export portfolio + new ideas (1–5) + portfolio monitor (6–7)
+ExecStart=/usr/bin/npm run morning-full
+
+# Log stdout/stderr through systemd journal (view with: journalctl --user -u warren-ai-daily)
+StandardOutput=journal
+StandardError=journal
+
+# Ideas (~10 min) + portfolio monitor (~10 min) + export/bootstrap buffer
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=default.target

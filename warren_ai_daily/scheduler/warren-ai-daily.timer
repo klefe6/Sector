@@ -1,0 +1,16 @@
+[Unit]
+Description=Warren AI Daily Runner — 7:00 AM Tue–Sat (matches morning-full off-day rules)
+
+[Timer]
+# Fire at 7:00 AM local time, Tuesday through Saturday (Sun/Mon skipped in morning-full)
+OnCalendar=Tue-Sat 07:00:00
+
+# If the machine was off at 7 AM, fire as soon as it wakes up (within 1h window)
+# Set to 0 to disable catch-up on missed fires
+Persistent=true
+
+# Small random delay (0-3min) to avoid hammering at exactly :00
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target

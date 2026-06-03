@@ -526,12 +526,46 @@ def _parse_step04(text: str, result: WarrenResult) -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
+def _today_failed_run() -> Optional[WarrenResult]:
+    """If today has run_summary.json with success=false, return a FAILED result."""
+    today_ds = date.today().strftime("%Y-%m-%d")
+    folder = os.path.join(WARREN_OUTPUT_DIR, today_ds)
+    summary_path = os.path.join(folder, "run_summary.json")
+    if not os.path.isfile(summary_path):
+        return None
+    try:
+        with open(summary_path, "r", encoding="utf-8") as fh:
+            s = json.load(fh)
+    except Exception:
+        return None
+    if s.get("success") is True:
+        return None
+
+    result = load_warren_from_folder(folder)
+    result.freshness = "FAILED"
+    result.success = False
+    err = s.get("error") or s.get("errorFile") or ""
+    if err:
+        result.warnings.insert(0, f"Today's run failed: {err}")
+    else:
+        result.warnings.insert(
+            0,
+            "Today's Warren AI run failed or was incomplete. Check scheduler_logs and journalctl.",
+        )
+    return result
+
+
 def get_latest_warren(force_refresh: bool = False) -> WarrenResult:
     """
     Parse and return the latest successful Warren AI daily run.
 
     Returns a WarrenResult with freshness='NONE' if no successful run found.
+    If today has a failed/incomplete run, returns freshness='FAILED' for that day.
     """
+    failed_today = _today_failed_run()
+    if failed_today is not None:
+        return failed_today
+
     folder = _find_latest_successful_dir()
     if folder is None:
         return WarrenResult(
@@ -558,6 +592,47 @@ def get_latest_warren(force_refresh: bool = False) -> WarrenResult:
     step04_text = _read_file(folder, "step_04.md")
 
     _parse_final_plan(final_text,  result)
+    _parse_step02(step02_text, result)
+    _parse_step03(step03_text, result)
+    _parse_step04(step04_text, result)
+
+    return result
+
+
+def load_warren_from_folder(folder: str) -> WarrenResult:
+    """
+    Parse Warren AI outputs from a specific day folder (…/output/YYYY-MM-DD).
+
+    Does not require run_summary success — callers use this for History / partial runs.
+    """
+    folder = os.path.abspath(folder)
+    if not os.path.isdir(folder):
+        return WarrenResult(
+            date="",
+            freshness="NONE",
+            success=False,
+            output_path="",
+            generated_at="",
+            warnings=["Output folder not found"],
+        )
+
+    run_date = os.path.basename(folder.rstrip(os.sep))
+    summary = _parse_run_summary(folder)
+
+    result = WarrenResult(
+        date=run_date,
+        freshness=_freshness(run_date),
+        success=bool(summary.get("success")) if summary else False,
+        output_path=folder,
+        generated_at=str(summary.get("completedAt") or summary.get("completed_at") or ""),
+    )
+
+    final_text = _read_file(folder, "final_action_plan.md")
+    step02_text = _read_file(folder, "step_02.md")
+    step03_text = _read_file(folder, "step_03.md")
+    step04_text = _read_file(folder, "step_04.md")
+
+    _parse_final_plan(final_text, result)
     _parse_step02(step02_text, result)
     _parse_step03(step03_text, result)
     _parse_step04(step04_text, result)

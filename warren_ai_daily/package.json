@@ -1,0 +1,44 @@
+{
+  "name": "warren-ai-daily",
+  "version": "1.1.0",
+  "description": "Daily swing trading prompt automation for Warren AI",
+  "private": true,
+  "scripts": {
+    "install-browsers": "playwright install chromium",
+    "build": "tsc --noEmit",
+    "dry-run": "cross-env DRY_RUN=true ts-node src/run_daily.ts",
+    "run-daily": "ts-node src/run_daily.ts",
+    "run-daily:resume": "cross-env RESUME=true ts-node src/run_daily.ts",
+    "run-daily:cdp": "cross-env WARREN_BROWSER_MODE=cdp ts-node src/run_daily.ts",
+    "run-daily:visible": "cross-env HEADLESS=false KEEP_BROWSER_OPEN=true ts-node src/run_daily.ts",
+    "preflight": "ts-node src/preflight.ts",
+    "diagnose-cdp": "ts-node src/diagnose_cdp.ts",
+    "inspect-page": "ts-node src/inspect_page.ts",
+    "morning": "ts-node src/morning.ts",
+    "scheduled-morning": "ts-node src/scheduled_morning.ts",
+    "validate": "ts-node src/validate_only.ts",
+    "scheduled-morning:check": "bash scripts/check_morning_readiness.sh",
+    "scheduled-morning:dry": "cross-env WARREN_SCHEDULE_DRY_RUN=true ts-node src/scheduled_morning.ts",
+    "install-schedule": "bash scheduler/install.sh",
+    "check-schedule": "bash scheduler/check.sh",
+    "uninstall-schedule": "bash scheduler/uninstall.sh",
+    "export-portfolio": "python3 scripts/export_portfolio_from_db.py",
+    "export-rrg-sectors": "python3 scripts/export_rrg_sectors.py",
+    "portfolio-monitor": "cross-env WARREN_BROWSER_MODE=cdp ts-node src/run_portfolio_monitor.ts",
+    "portfolio-monitor:dry": "cross-env PORTFOLIO_DRY_RUN=true WARREN_BROWSER_MODE=cdp ts-node src/run_portfolio_monitor.ts",
+    "morning-full": "cross-env WARREN_BROWSER_MODE=cdp ts-node src/morning_full.ts",
+    "morning-full:dry": "cross-env MORNING_DRY_RUN=true WARREN_BROWSER_MODE=cdp ts-node src/morning_full.ts",
+    "theme-catalyst-radar": "cross-env WARREN_BROWSER_MODE=cdp ts-node src/run_theme_catalyst_radar.ts",
+    "theme-catalyst-radar:dry": "cross-env THEME_CATALYST_DRY_RUN=true WARREN_BROWSER_MODE=cdp ts-node src/run_theme_catalyst_radar.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "playwright": "^1.60.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "cross-env": "^7.0.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}

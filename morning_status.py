@@ -395,7 +395,7 @@ def summarize_forward_walk_level_outcomes(rows: list["ForwardWalkRow"]) -> dict[
     """Count outcomes for the level summary line (includes all rows)."""
     keys = [
         "triggered", "no_entry", "target_hit", "stop_hit", "open",
-        "ambiguous", "levels_missing",
+        "ambiguous", "levels_missing", "rejected",
     ]
     out = {k: 0 for k in keys}
     for r in rows:
@@ -408,6 +408,8 @@ def summarize_forward_walk_level_outcomes(rows: list["ForwardWalkRow"]) -> dict[
         elif o == "Stop hit":
             out["stop_hit"] += 1
             out["triggered"] += 1
+        elif o == "Rejected":
+            out["rejected"] += 1
         elif o == "Open":
             out["open"] += 1
             out["triggered"] += 1
@@ -416,7 +418,7 @@ def summarize_forward_walk_level_outcomes(rows: list["ForwardWalkRow"]) -> dict[
             out["triggered"] += 1
         elif o == "Levels missing":
             out["levels_missing"] += 1
-        else:
+        elif o not in ("Rejected",):
             out["levels_missing"] += 1
     return out
 
@@ -430,10 +432,12 @@ def format_level_outcome_summary(counts: dict[str, int]) -> str:
     op = counts.get("open", 0)
     am = counts.get("ambiguous", 0)
     ms = counts.get("levels_missing", 0)
+    rj = counts.get("rejected", 0)
     return (
         f"Levels: {tr} entries triggered · {th} target hit · {sh} stop hit · {op} open · {ne} no entry"
         + (f" · {am} same-day ambiguous" if am else "")
         + (f" · {ms} levels missing" if ms else "")
+        + (f" · {rj} rejected by Warren (no plan)" if rj else "")
     )
 
 
@@ -567,7 +571,8 @@ def get_forward_walk_results(
         except Exception:
             continue
 
-        top3_set = {t["ticker"] for t in day_result.top3_trades}
+        top3_set      = {t["ticker"] for t in day_result.top3_trades}
+        actionable_set = set(day_result.actionable)   # tickers with a trade plan
         scan_date_obj = d
 
         # Deduplicate suggested tickers for this day
@@ -637,10 +642,20 @@ def get_forward_walk_results(
             elo, ehi = _parse_entry_range_bounds(er)
             sl_f = _parse_scalar_price(sr)
             tp_f = _parse_scalar_price(tpr)
+
+            # Distinguish between:
+            #   "Rejected" — Warren AI evaluated this ticker and explicitly rejected it
+            #                (in all_tickers but NOT in actionable; no plan was ever given)
+            #   "Levels missing" — ticker was actionable but levels couldn't be parsed/fetched
+            has_levels = bool(er and sl_f is not None and tp_f is not None)
+            was_rejected = (ticker not in actionable_set) and (ticker in (set(day_result.all_tickers) - actionable_set))
             try:
-                outcome = evaluate_long_levels_outcome(
-                    hist, scan_date_obj, elo, ehi, sl_f, tp_f,
-                )
+                if was_rejected and not has_levels:
+                    outcome = "Rejected"
+                else:
+                    outcome = evaluate_long_levels_outcome(
+                        hist, scan_date_obj, elo, ehi, sl_f, tp_f,
+                    )
             except Exception:
                 outcome = "Levels missing"
 
@@ -674,6 +689,21 @@ def get_forward_walk_results(
             ))
 
     return rows
+
+
+def get_forward_walk_rows_for_scan_date(
+    scan_date: str,
+    active_tickers: set[str] | None = None,
+    watchlist_tickers: set[str] | None = None,
+    max_lookback_days: int = 400,
+) -> list[ForwardWalkRow]:
+    """Reuse forward-walk engine; return rows for a single scan_date (YYYY-MM-DD)."""
+    rows = get_forward_walk_results(
+        days=max(1, max_lookback_days),
+        active_tickers=active_tickers,
+        watchlist_tickers=watchlist_tickers,
+    )
+    return [r for r in rows if r.scan_date == scan_date]
 
 
 @dataclass
@@ -1697,3 +1727,323 @@ def build_benchmark_avg_path(
         if vals:
             avg.append([day, round(sum(vals) / len(vals), 4)])
     return avg
+
+
+# ---------------------------------------------------------------------------
+# 9. Sector ETF Allocation Check
+# ---------------------------------------------------------------------------
+
+def _ret_at_day(path: list[list], max_day: int) -> "Optional[float]":
+    """Return the last pct value where day_int <= max_day. None if path empty."""
+    result = None
+    for d, p in path:
+        if d <= max_day:
+            result = p
+        else:
+            break
+    return result
+
+
+def _etf_allocation_decision(
+    *,
+    primary_ret: "Optional[float]",
+    new_ret: "Optional[float]",
+    owned_ret: "Optional[float]",
+    etf_ret: "Optional[float]",
+    spy_ret: "Optional[float]",
+    etf_edge_threshold: float = 3.0,
+) -> dict:
+    """
+    Pure decision function — no I/O.
+
+    Rules (applied in order; later rules can override earlier ones):
+      1. ETF beats stock basket by > threshold  → prefer sector ETF
+      2. Stock basket negative AND ETF positive → strongly prefer sector ETF
+      3. Owned underperforms both ETF and SPY   → mark owned as avoid_adding
+      4. New alerts beat owned alerts           → mark new as prefer_new
+      5. Stock alerts beat ETF                  → allow stock allocation
+      6. Both stock AND ETF weak vs SPY         → wait
+
+    Returns a dict with vehicle, owned_signal, new_signal, rules_fired.
+    """
+    rules_fired: list[str] = []
+    vehicle = "stock_alerts"
+    owned_signal = "ok"
+    new_signal = "ok"
+
+    # Rule 1 — ETF edge
+    if primary_ret is not None and etf_ret is not None:
+        gap = etf_ret - primary_ret
+        if gap > etf_edge_threshold:
+            vehicle = "sector_etf"
+            rules_fired.append(
+                f"ETF leads stock basket by {gap:.1f}% (>{etf_edge_threshold:.0f}% threshold)"
+            )
+
+    # Rule 2 — basket negative, ETF positive
+    if primary_ret is not None and etf_ret is not None:
+        if primary_ret < 0 and etf_ret > 0:
+            vehicle = "sector_etf"
+            if "ETF leads" not in " ".join(rules_fired):
+                rules_fired.append("Stock basket negative while ETF positive — strong ETF preference")
+
+    # Rule 3 — owned lagging
+    if owned_ret is not None and etf_ret is not None and spy_ret is not None:
+        if owned_ret < etf_ret and owned_ret < spy_ret:
+            owned_signal = "avoid_adding"
+            rules_fired.append("Owned positions lagging both ETF and SPY — avoid adding to owned")
+
+    # Rule 4 — new > owned
+    if new_ret is not None and owned_ret is not None:
+        if new_ret > owned_ret:
+            new_signal = "prefer_new"
+            rules_fired.append(
+                f"New alerts ({new_ret:+.1f}%) outperforming owned ({owned_ret:+.1f}%) "
+                "— prefer new setups over adding to laggards"
+            )
+
+    # Rule 5 — stocks beat ETF (only applies if we haven't already set ETF preference)
+    if primary_ret is not None and etf_ret is not None:
+        if primary_ret > etf_ret and vehicle not in ("sector_etf",):
+            vehicle = "stock_alerts"
+            rules_fired.append(
+                f"Stock alerts ({primary_ret:+.1f}%) leading ETF ({etf_ret:+.1f}%) "
+                "— individual stock allocation allowed"
+            )
+
+    # Rule 6 — both weak vs SPY
+    if primary_ret is not None and etf_ret is not None and spy_ret is not None:
+        if primary_ret < 0 and etf_ret < 0 and primary_ret < spy_ret and etf_ret < spy_ret:
+            vehicle = "wait"
+            rules_fired.append(
+                "Both stock alerts and ETF negative and trailing SPY — wait or broad index only"
+            )
+
+    vehicle_labels = {
+        "stock_alerts": "Stock Alerts",
+        "sector_etf":   "Sector ETF",
+        "spy_qqq":      "SPY or QQQ",
+        "wait":         "Cash / Wait",
+    }
+    return {
+        "vehicle":       vehicle,
+        "vehicle_label": vehicle_labels.get(vehicle, vehicle),
+        "owned_signal":  owned_signal,
+        "new_signal":    new_signal,
+        "rules_fired":   rules_fired,
+    }
+
+
+def _compute_allocation_splits(decision: dict) -> dict:
+    """
+    Return conservative / balanced / aggressive weight dicts based on vehicle signal.
+
+    Base (neutral):
+        conservative: 70% ETF  / 30% stocks
+        balanced:     50% ETF  / 50% stocks
+        aggressive:   30% ETF  / 70% stocks
+
+    ETF clearly winning → shift +10–20% toward ETF.
+    Stocks clearly winning → shift +15–20% toward stocks.
+    Both weak → reduce to cash.
+    """
+    vehicle = decision.get("vehicle", "stock_alerts")
+
+    if vehicle == "wait":
+        return {
+            "conservative": {"etf": 0,  "stocks": 0,  "cash": 100},
+            "balanced":     {"etf": 0,  "stocks": 10, "cash": 90},
+            "aggressive":   {"etf": 10, "stocks": 20, "cash": 70},
+            "note": "Both markets weak — reduce size and wait for a cleaner tape.",
+        }
+
+    if vehicle == "sector_etf":
+        return {
+            "conservative": {"etf": 80, "stocks": 20, "cash": 0},
+            "balanced":     {"etf": 65, "stocks": 35, "cash": 0},
+            "aggressive":   {"etf": 50, "stocks": 50, "cash": 0},
+            "note": "ETF leading — weight toward sector ETF over individual names.",
+        }
+
+    if vehicle == "spy_qqq":
+        return {
+            "conservative": {"etf": 70, "stocks": 0,  "cash": 30},
+            "balanced":     {"etf": 60, "stocks": 20, "cash": 20},
+            "aggressive":   {"etf": 50, "stocks": 30, "cash": 20},
+            "note": "Broad index preferred — SPY / QQQ over individual sectors.",
+        }
+
+    # stock_alerts
+    return {
+        "conservative": {"etf": 40, "stocks": 60, "cash": 0},
+        "balanced":     {"etf": 25, "stocks": 75, "cash": 0},
+        "aggressive":   {"etf": 15, "stocks": 85, "cash": 0},
+        "note": "Stock alerts leading — stock-heavy allocation supported by data.",
+    }
+
+
+def compute_etf_allocation_check(
+    pa_data: dict,
+    *,
+    day_windows: "tuple[int, int]" = (5, 10),
+    etf_edge_threshold: float = 3.0,
+) -> dict:
+    """
+    Compute ETF vs individual-stock allocation decision from post-alert store data.
+
+    Parameters
+    ----------
+    pa_data          : dict from post-alert-data-store
+                       {"series": [...], "sector_series": [...], ...}
+    day_windows      : (short_window, primary_window) in trading days
+    etf_edge_threshold: % gap at which ETF is considered clearly winning
+
+    Returns a flat dict suitable for rendering in the dashboard:
+        primary_etf, day_window, primary_ret, new_ret, owned_ret,
+        etf_ret, spy_ret, qqq_ret, mag7_ret,
+        diff_stock_vs_etf, n_stocks, n_new, n_owned,
+        decision  (vehicle, vehicle_label, owned_signal, new_signal, rules_fired),
+        allocation (conservative, balanced, aggressive, note),
+        error
+    """
+    series        = pa_data.get("series") or []
+    sector_series = pa_data.get("sector_series") or []
+
+    if not series:
+        return {
+            "error": "No post-alert series data available.",
+            "decision": {"vehicle": "wait", "vehicle_label": "Cash / Wait",
+                         "owned_signal": "ok", "new_signal": "ok", "rules_fired": []},
+            "allocation": _compute_allocation_splits({"vehicle": "wait"}),
+        }
+
+    # Determine the primary sector ETF (most frequently mapped in stock series)
+    etf_counts: dict[str, int] = {}
+    for s in series:
+        etf = (s.get("sector_etf") or "").strip().upper()
+        if etf:
+            etf_counts[etf] = etf_counts.get(etf, 0) + 1
+    primary_etf = max(etf_counts, key=lambda k: etf_counts[k]) if etf_counts else "XLK"
+
+    d_short, d_primary = day_windows
+
+    # Stock series subsets
+    new_series   = [s for s in series if s.get("portfolio_status") == "New"]
+    owned_series = [s for s in series if s.get("portfolio_status") == "Already owned"]
+
+    # Average paths — stock basket
+    primary_avg_path = build_average_post_alert_path(series)
+    new_avg_path     = build_average_post_alert_path(new_series)   if new_series   else []
+    owned_avg_path   = build_average_post_alert_path(owned_series) if owned_series else []
+
+    # Sector ETF path: use primary_etf rows from sector_series
+    etf_rows = [s for s in sector_series if s.get("ticker") == primary_etf]
+    etf_avg_path = build_average_post_alert_path(etf_rows) if etf_rows else []
+
+    # Fallback chain: primary_etf → XLK → QQQ
+    if not etf_avg_path and primary_etf != "XLK":
+        xlk_rows = [s for s in sector_series if s.get("ticker") == "XLK"]
+        if xlk_rows:
+            etf_avg_path = build_average_post_alert_path(xlk_rows)
+            primary_etf  = "XLK"
+    if not etf_avg_path:
+        # Last resort: compute directly from yfinance benchmark path
+        etf_avg_path = build_benchmark_avg_path(series, primary_etf)
+
+    # Benchmark avg paths (aligned to scan dates in the stock series)
+    spy_avg_path  = build_benchmark_avg_path(series, "SPY")
+    qqq_avg_path  = build_benchmark_avg_path(series, "QQQ")
+    mag7_avg_path = build_benchmark_avg_path(series, "MAG7")
+
+    # Extract scalar returns at target windows
+    primary_ret  = _ret_at_day(primary_avg_path, d_primary)
+    primary_ret5 = _ret_at_day(primary_avg_path, d_short)
+    new_ret      = _ret_at_day(new_avg_path,     d_primary)
+    owned_ret    = _ret_at_day(owned_avg_path,   d_primary)
+    etf_ret      = _ret_at_day(etf_avg_path,     d_primary)
+    etf_ret5     = _ret_at_day(etf_avg_path,     d_short)
+    spy_ret      = _ret_at_day(spy_avg_path,     d_primary)
+    qqq_ret      = _ret_at_day(qqq_avg_path,     d_primary)
+    mag7_ret     = _ret_at_day(mag7_avg_path,    d_primary)
+
+    # Decision
+    decision   = _etf_allocation_decision(
+        primary_ret=primary_ret,
+        new_ret=new_ret,
+        owned_ret=owned_ret,
+        etf_ret=etf_ret,
+        spy_ret=spy_ret,
+        etf_edge_threshold=etf_edge_threshold,
+    )
+    allocation = _compute_allocation_splits(decision)
+
+    diff = (
+        round(primary_ret - etf_ret, 2)
+        if primary_ret is not None and etf_ret is not None
+        else None
+    )
+
+    return {
+        "primary_etf":      primary_etf,
+        "day_window":       d_primary,
+        "day_window_short": d_short,
+        "primary_ret":      primary_ret,
+        "primary_ret5":     primary_ret5,
+        "new_ret":          new_ret,
+        "owned_ret":        owned_ret,
+        "etf_ret":          etf_ret,
+        "etf_ret5":         etf_ret5,
+        "spy_ret":          spy_ret,
+        "qqq_ret":          qqq_ret,
+        "mag7_ret":         mag7_ret,
+        "diff_stock_vs_etf": diff,
+        "n_stocks":         len(series),
+        "n_new":            len(new_series),
+        "n_owned":          len(owned_series),
+        "decision":         decision,
+        "allocation":       allocation,
+        "error":            None,
+    }
+
+
+def debug_etf_allocation_check(
+    primary_avg: "Optional[float]",
+    etf_avg: "Optional[float]",
+    spy_avg: "Optional[float]",
+    owned_avg: "Optional[float]" = None,
+    new_avg: "Optional[float]" = None,
+    etf_edge_threshold: float = 3.0,
+) -> dict:
+    """
+    Deterministic entry point — bypasses all yfinance / data loading.
+    Pass scalar return values directly to get a full decision + allocation dict.
+    Useful for unit tests and CI.
+
+    Example::
+        debug_etf_allocation_check(primary_avg=1.0, etf_avg=5.0, spy_avg=2.0)
+        # → vehicle: "sector_etf"
+    """
+    decision   = _etf_allocation_decision(
+        primary_ret=primary_avg,
+        new_ret=new_avg,
+        owned_ret=owned_avg,
+        etf_ret=etf_avg,
+        spy_ret=spy_avg,
+        etf_edge_threshold=etf_edge_threshold,
+    )
+    allocation = _compute_allocation_splits(decision)
+    diff = (
+        round(primary_avg - etf_avg, 2)
+        if primary_avg is not None and etf_avg is not None
+        else None
+    )
+    return {
+        "primary_ret":       primary_avg,
+        "new_ret":           new_avg,
+        "owned_ret":         owned_avg,
+        "etf_ret":           etf_avg,
+        "spy_ret":           spy_avg,
+        "diff_stock_vs_etf": diff,
+        "decision":          decision,
+        "allocation":        allocation,
+    }

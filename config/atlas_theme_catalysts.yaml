@@ -1,0 +1,92 @@
+# AtlasInvestor Theme Catalyst Radar — event-driven theme definitions
+# Private companies map to public proxy baskets for sympathy-trade detection.
+
+event_types:
+  - IPO
+  - S1 filing
+  - roadshow
+  - pricing date
+  - listing date
+  - major contract
+  - government funding
+  - earnings cluster
+  - regulatory decision
+  - product launch
+  - geopolitical event
+  - sector wide policy event
+
+private_company_mappings:
+  SpaceX:
+    themes:
+      - space
+      - satellites
+      - launch
+      - Starlink
+      - defense aerospace
+      - communications infrastructure
+    proxy_tickers:
+      - RKLB
+      - ASTS
+      - LUNR
+      - PL
+      - BKSY
+      - IRDM
+      - GSAT
+      - SATS
+      - SPCE
+    proxy_etfs:
+      - ARKX
+      - UFO
+      - ITA
+      - XAR
+      - PPA
+      - XLC
+    primary_etf: ARKX
+
+catalysts:
+  - id: spacex_ipo_june_2026
+    private_company: SpaceX
+    event_type: IPO
+    theme: space
+    themes_affected:
+      - space
+      - satellites
+      - launch
+      - Starlink
+      - defense aerospace
+      - communications infrastructure
+    catalyst_label: "SpaceX IPO target date"
+    catalyst_date: "2026-06-12"
+    status: upcoming
+    confidence: medium
+    source: "reported media target"
+    source_name: "Financial media reports"
+    source_url: ""
+    date_added: "2026-06-02"
+    last_verified: "2026-06-02"
+    verification_status: pending
+    manual_review_required: true
+    source_freshness: manual
+    action_context: "Watch theme — do not chase without proxy confirmation"
+    proxy_tickers:
+      - RKLB
+      - ASTS
+      - LUNR
+      - PL
+      - BKSY
+      - IRDM
+      - GSAT
+      - SATS
+      - SPCE
+    proxy_etfs:
+      - ARKX
+      - UFO
+      - ITA
+      - XAR
+      - PPA
+      - XLC
+    sector_etf_basket:
+      - ARKX
+      - UFO
+      - ITA
+      - XAR

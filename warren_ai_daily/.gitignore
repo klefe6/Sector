@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+
+# Persistent browser session — contains login cookies, never commit
+browser_profile/
+
+# Daily outputs — may contain sensitive data, exclude from version control
+output/
+
+# Editor
+.DS_Store
+*.log
+config/current_portfolio.json
