@@ -37,6 +37,7 @@ import selector as sel
 import macro_regime as mr
 import warren_loader as wl
 import chart_data as cd
+import evaluation_snapshot_ui as esui
 import portfolio_exposure as pe
 import morning_status as ms
 import warren_history as wh
@@ -1385,6 +1386,71 @@ def build_macro_regime_section(regime: mr.MacroRegime) -> html.Div:
     ], pad="14px 18px"), style=_mbottom)
 
 # ---------------------------------------------------------------------------
+# Evaluation Snapshot card (read-only manifest summary)
+# ---------------------------------------------------------------------------
+
+def build_evaluation_snapshot_card() -> html.Div:
+    """Read-only Evaluation Snapshot card — local summary only, no auto-run."""
+    try:
+        summary = esui.load_evaluation_snapshot_summary("stock")
+    except Exception:  # noqa: BLE001
+        return html.Div()
+
+    status_styles = {
+        "fresh":   (C["green_bg"], C["green_fg"], "FRESH"),
+        "warn":    (C["amber_bg"], C["amber_fg"], "WARN"),
+        "missing": (C["neutral_bg"], C["neutral_fg"], "MISSING"),
+        "error":   (C["red_bg"], C["red_fg"], "ERROR"),
+    }
+    bg, fg, lbl = status_styles.get(summary.get("status", "missing"), status_styles["missing"])
+
+    header = html.Div([
+        section_hdr(summary.get("title", "Evaluation Snapshot")),
+        badge(summary.get("status_label", lbl), bg, fg),
+    ], style={"display": "flex", "alignItems": "center",
+              "justifyContent": "space-between", "gap": "8px"})
+
+    body_children: list = [
+        header,
+        html.Div(
+            summary.get("meta_line") or "No snapshot recorded yet.",
+            style={"fontSize": "11px", "color": C["muted"], "margin": "6px 0 8px 0"},
+        ),
+    ]
+
+    source_lines = list(summary.get("source_lines") or [])
+    if source_lines:
+        body_children.append(html.Div(
+            [html.Div(line, style={"fontSize": "11px", "color": C["dim"], "lineHeight": "1.4"})
+             for line in source_lines],
+            style={"marginBottom": "6px"},
+        ))
+
+    file_lines = list(summary.get("file_lines") or [])
+    if file_lines:
+        body_children.append(html.Div(
+            "  ·  ".join(file_lines),
+            style={"fontSize": "10.5px", "color": C["dim"], "marginBottom": "6px"},
+        ))
+
+    warning_lines = list(summary.get("warning_lines") or [])
+    if warning_lines:
+        body_children.append(html.Div(
+            [html.Div(f"⚠ {w}", style={"fontSize": "11px", "color": fg, "lineHeight": "1.35"})
+             for w in warning_lines],
+            style={"background": bg, "padding": "8px 10px", "borderRadius": "8px",
+                   "marginTop": "4px"},
+        ))
+    elif summary.get("hint_line"):
+        body_children.append(html.Div(
+            summary["hint_line"],
+            style={"fontSize": "11px", "color": C["dim"], "marginTop": "4px"},
+        ))
+
+    return html.Div(body_children)
+
+
+# ---------------------------------------------------------------------------
 # Morning Scan Status section builder
 # ---------------------------------------------------------------------------
 
@@ -2103,6 +2169,11 @@ def build_morning_scan_section(
 
         # Sub-section 5: Automation Health
         html.Div(_sub4()),
+
+        html.Hr(style={"borderColor": C["border"], "margin": "14px 0"}),
+
+        # Sub-section 6: Evaluation Snapshot (read-only manifest summary)
+        html.Div(build_evaluation_snapshot_card()),
     ], pad="18px"))
 
 
@@ -5739,6 +5810,12 @@ def api_atlas_morning_audio_source():
         active_positions=active_pos,
     )
     return jsonify(payload)
+
+
+@server.route("/api/evaluation-snapshot/stock")
+def api_evaluation_snapshot_stock():
+    """Read-only stock evaluation snapshot summary (no network, no auto-run)."""
+    return jsonify(esui.load_evaluation_snapshot_summary("stock"))
 
 
 @server.route("/api/atlas/theme-catalyst-radar")
