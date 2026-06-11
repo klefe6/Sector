@@ -13,6 +13,9 @@ sys.path.insert(0, str(_ROOT / "scripts"))
 
 import run_evaluation_snapshot as evs  # noqa: E402
 
+sys.path.insert(0, str(_ROOT))
+import evaluation_manifest_loader as eml  # noqa: E402
+
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,3 +128,40 @@ def test_write_manifest_roundtrip(tmp_path: Path):
     loaded = json.loads(Path(path).read_text(encoding="utf-8"))
     assert loaded["asset_class"] == "crypto"
     assert evs.validate_manifest_schema(loaded) == []
+
+
+def test_manifest_loader_missing_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    warren_out = tmp_path / "warren"
+    monkeypatch.setattr(eml.wl, "WARREN_OUTPUT_DIR", str(warren_out))
+    loaded = eml.load_evaluation_manifest("stock")
+    assert loaded["available"] is False
+    assert loaded["status"] == "missing"
+    assert loaded["freshness_warnings"]
+
+
+def test_manifest_loader_reads_valid_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    base = tmp_path / "warren" / "callout_performance" / "stock"
+    base.mkdir(parents=True)
+    manifest = {
+        "generated_at": "2026-06-11T12:00:00Z",
+        "asset_class": "stock",
+        "lookback_days": 30,
+        "callout_count": 5,
+        "outcome_count": 5,
+        "report_path": None,
+        "callouts_path": None,
+        "outcomes_path": None,
+        "latest_source_snapshot": {
+            "warren_output_date": "2026-06-11",
+            "warren_age_hours": 1.0,
+        },
+        "freshness_warnings": [],
+    }
+    (base / "evaluation_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(eml.wl, "WARREN_OUTPUT_DIR", str(tmp_path / "warren"))
+
+    loaded = eml.load_evaluation_manifest("stock")
+    assert loaded["available"] is True
+    assert loaded["status"] == "fresh"
+    assert loaded["callout_count"] == 5
+    assert eml.source_freshness_lines(loaded)[0].startswith("Warren output:")
