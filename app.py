@@ -9236,5 +9236,6 @@ def dropdown_update_ticker(ticker):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print(f"Decision Cockpit starting on http://127.0.0.1:{PORT}")
-    app.run(host="127.0.0.1", port=PORT, debug=True)
+    bind_host = os.environ.get("RRG_BIND_HOST", "127.0.0.1")
+    print(f"Decision Cockpit starting on http://{bind_host}:{PORT}")
+    app.run(host=bind_host, port=PORT, debug=True)
